@@ -13,6 +13,7 @@ func main() {
 	mux.Handle("/app/", apiConfig.middlewareMetricsInc(fileServerHandler))
 	mux.HandleFunc("/healthz", healthzHandler)
 	mux.HandleFunc("/metrics", apiConfig.metricsHandler)
+	mux.HandleFunc("/reset", apiConfig.resetHandler)
 	server := http.Server{Handler: mux, Addr: ":8080"}
 	server.ListenAndServe()
 }
@@ -37,4 +38,10 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.HandlerFunc {
 func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
 	fmt.Fprintf(w, "Hits: %v", cfg.fileServerHits.Load())
+}
+
+func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
+	cfg.fileServerHits.Store(0)
+	w.WriteHeader(200)
+	fmt.Fprint(w, "OK")
 }
