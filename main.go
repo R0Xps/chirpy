@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync/atomic"
 )
 
@@ -69,35 +70,57 @@ func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type responseVals struct {
-		Valid bool   `json:"valid"`
+	if len(params.Body) > 140 {
+		respondWithError(w, 400, "Chirp is too long")
+		return
+	}
+
+	type cleanedBodyResponse struct {
+		CleanedBody string `json:"cleaned_body"`
+	}
+
+	response := cleanedBodyResponse{
+		CleanedBody: cleanChirp(params.Body),
+	}
+
+	respondWithJSON(w, 200, response)
+}
+
+var bad_words map[string]struct{} = map[string]struct{}{
+	"kerfuffle": struct{}{},
+	"sharbert":  struct{}{},
+	"fornax":    struct{}{},
+}
+
+func cleanChirp(s string) string {
+	words := strings.Fields(s)
+	for i, w := range words {
+		if _, ok := bad_words[strings.ToLower(w)]; ok {
+			words[i] = "****"
+		}
+	}
+	return strings.Join(words, " ")
+}
+
+func respondWithError(w http.ResponseWriter, code int, msg string) {
+	type errorResponse struct {
 		Error string `json:"error"`
 	}
-
-	resBody := responseVals{}
-	if len(params.Body) > 140 {
-		resBody.Valid = false
-		resBody.Error = "Chirp is too long"
-	} else {
-		resBody.Valid = true
-		resBody.Error = ""
+	response := errorResponse{
+		Error: msg,
 	}
+	respondWithJSON(w, code, response)
+}
 
-	data, err := json.Marshal(resBody)
+func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
+	data, err := json.Marshal(payload)
 
 	if err != nil {
 		log.Printf("Error marshalling JSON: %s", err)
 		w.WriteHeader(500)
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
-
-	if resBody.Valid {
-		w.WriteHeader(200)
-	} else {
-		w.WriteHeader(400)
-	}
-
+	w.WriteHeader(code)
 	w.Write(data)
 }
