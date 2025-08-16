@@ -20,6 +20,7 @@ import (
 func main() {
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
+	platform := os.Getenv("PLATFORM")
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		log.Fatal(err)
@@ -27,6 +28,7 @@ func main() {
 	dbQueries := database.New(db)
 	apiConfig := apiConfig{
 		dbQueries: dbQueries,
+		platform:  platform,
 	}
 
 	mux := http.NewServeMux()
@@ -50,6 +52,7 @@ func healthzHandler(w http.ResponseWriter, r *http.Request) {
 type apiConfig struct {
 	fileServerHits atomic.Int32
 	dbQueries      *database.Queries
+	platform       string
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -71,6 +74,16 @@ func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
+	if cfg.platform != "dev" {
+		w.WriteHeader(403)
+		return
+	}
+	err := cfg.dbQueries.ResetUsers(r.Context())
+	if err != nil {
+		log.Printf("Error resetting users table: %s", err)
+		w.WriteHeader(500)
+		return
+	}
 	cfg.fileServerHits.Store(0)
 	w.WriteHeader(200)
 	fmt.Fprint(w, "OK")
