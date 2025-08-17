@@ -39,6 +39,7 @@ func main() {
 	mux.HandleFunc("POST /admin/reset", apiConfig.resetHandler)
 	mux.HandleFunc("POST /api/chirps", apiConfig.postChirpsHandler)
 	mux.HandleFunc("GET /api/chirps", apiConfig.getChirpsHandler)
+	mux.HandleFunc("GET /api/chirps/{chirpID}", apiConfig.getChirpHandler)
 	mux.HandleFunc("POST /api/users", apiConfig.usersHandler)
 	server := http.Server{Handler: mux, Addr: ":8080"}
 	server.ListenAndServe()
@@ -163,6 +164,31 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, 200, chirps)
+}
+
+func (cfg *apiConfig) getChirpHandler(w http.ResponseWriter, r *http.Request) {
+	chirpID, err := uuid.Parse(r.PathValue("chirpID"))
+	if err != nil {
+		respondWithError(w, 400, "Invalid UUID")
+		return
+	}
+
+	dbChirp, err := cfg.dbQueries.GetChirpById(r.Context(), chirpID)
+
+	if err != nil {
+		w.WriteHeader(404)
+		return
+	}
+
+	responseChirp := chirp{
+		ID:        dbChirp.ID,
+		CreatedAt: dbChirp.CreatedAt,
+		UpdatedAt: dbChirp.UpdatedAt,
+		Body:      dbChirp.Body,
+		UserID:    dbChirp.UserID,
+	}
+
+	respondWithJSON(w, 200, responseChirp)
 }
 
 var bad_words map[string]struct{} = map[string]struct{}{
