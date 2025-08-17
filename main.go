@@ -120,9 +120,9 @@ func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 var bad_words map[string]struct{} = map[string]struct{}{
-	"kerfuffle": struct{}{},
-	"sharbert":  struct{}{},
-	"fornax":    struct{}{},
+	"kerfuffle": {},
+	"sharbert":  {},
+	"fornax":    {},
 }
 
 func cleanChirp(s string) string {
