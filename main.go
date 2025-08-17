@@ -37,7 +37,7 @@ func main() {
 	mux.HandleFunc("GET /api/healthz", healthzHandler)
 	mux.HandleFunc("GET /admin/metrics", apiConfig.metricsHandler)
 	mux.HandleFunc("POST /admin/reset", apiConfig.resetHandler)
-	mux.HandleFunc("POST /api/validate_chirp", validateChirpHandler)
+	mux.HandleFunc("POST /api/chirps", apiConfig.chirpsHandler)
 	mux.HandleFunc("POST /api/users", apiConfig.usersHandler)
 	server := http.Server{Handler: mux, Addr: ":8080"}
 	server.ListenAndServe()
@@ -89,9 +89,18 @@ func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "OK")
 }
 
-func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) chirpsHandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Body string `json:"body"`
+		Body   string    `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
+
+	type chirp struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body      string    `json:"body"`
+		UserID    uuid.UUID `json:"user_id"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -108,15 +117,27 @@ func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type cleanedBodyResponse struct {
-		CleanedBody string `json:"cleaned_body"`
+	createChirpParams := database.CreateChirpParams{
+		Body:   cleanChirp(params.Body),
+		UserID: params.UserID,
 	}
 
-	response := cleanedBodyResponse{
-		CleanedBody: cleanChirp(params.Body),
+	dbChirp, err := cfg.dbQueries.CreateChirp(r.Context(), createChirpParams)
+
+	if err != nil {
+		respondWithError(w, 422, err.Error())
+		return
 	}
 
-	respondWithJSON(w, 200, response)
+	responseChirp := chirp{
+		ID:        dbChirp.ID,
+		CreatedAt: dbChirp.CreatedAt,
+		UpdatedAt: dbChirp.UpdatedAt,
+		Body:      dbChirp.Body,
+		UserID:    dbChirp.UserID,
+	}
+
+	respondWithJSON(w, 201, responseChirp)
 }
 
 var bad_words map[string]struct{} = map[string]struct{}{
