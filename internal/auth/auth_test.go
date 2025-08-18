@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
@@ -59,6 +60,7 @@ func TestJWT(t *testing.T) {
 	uuid, err = ValidateJWT(longToken, incorrectSecret)
 	if err == nil {
 		t.Errorf("Error validating long token with incorrect secret: Validation succeeded (should have failed), returned UUID: %s", uuid)
+		return
 	}
 
 	shortToken, err := MakeJWT(userID, correctSecret, time.Second)
@@ -71,5 +73,29 @@ func TestJWT(t *testing.T) {
 	uuid, err = ValidateJWT(shortToken, correctSecret)
 	if err == nil {
 		t.Errorf("Error validating short token: Validation succeeded (token should have expired), returned UUID: %s", uuid)
+		return
+	}
+}
+
+func TestGetBearerToken(t *testing.T) {
+	correctToken := "TestToken"
+	headers := http.Header{}
+
+	token, err := GetBearerToken(headers)
+	if err == nil {
+		t.Errorf("Somehow found token when it was not provided: %s", token)
+		return
+	}
+
+	headers.Set("Authorization", "Bearer "+correctToken)
+	token, err = GetBearerToken(headers)
+	if err != nil {
+		t.Errorf("Error getting bearer token: %s", err)
+		return
+	}
+
+	if token != correctToken {
+		t.Errorf("Error getting bearer token: incorrect token returned\nexpected: %s\nfound: %s", correctToken, token)
+		return
 	}
 }
