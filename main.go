@@ -309,17 +309,17 @@ func (cfg *apiConfig) postUsersHandler(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Email            string `json:"email"`
-		Password         string `json:"password"`
-		ExpiresInSeconds int    `json:"expires_in_seconds"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 
 	type loginUser struct {
-		ID        uuid.UUID `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Email     string    `json:"email"`
-		Token     string    `json:"token"`
+		ID           uuid.UUID `json:"id"`
+		CreatedAt    time.Time `json:"created_at"`
+		UpdatedAt    time.Time `json:"updated_at"`
+		Email        string    `json:"email"`
+		Token        string    `json:"token"`
+		RefreshToken string    `json:"refresh_token"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -343,24 +343,34 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expiresIn := min(params.ExpiresInSeconds, 3600)
-	if expiresIn == 0 {
-		expiresIn = 3600
-	}
-
-	token, err := auth.MakeJWT(dbUser.ID, cfg.secret, time.Second*time.Duration(expiresIn))
+	token, err := auth.MakeJWT(dbUser.ID, cfg.secret, time.Hour)
 	if err != nil {
 		log.Printf("Error creating JWT: %s", err)
 		w.WriteHeader(500)
 		return
 	}
 
+	refreshToken, _ := auth.MakeRefreshToken()
+
+	createRefreshTokenParams := database.CreateRefreshTokenParams{
+		Token:  refreshToken,
+		UserID: dbUser.ID,
+	}
+
+	_, err = cfg.dbQueries.CreateRefreshToken(r.Context(), createRefreshTokenParams)
+	if err != nil {
+		log.Printf("Error adding refresh token to database: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
 	responseUser := loginUser{
-		ID:        dbUser.ID,
-		CreatedAt: dbUser.CreatedAt,
-		UpdatedAt: dbUser.UpdatedAt,
-		Email:     dbUser.Email,
-		Token:     token,
+		ID:           dbUser.ID,
+		CreatedAt:    dbUser.CreatedAt,
+		UpdatedAt:    dbUser.UpdatedAt,
+		Email:        dbUser.Email,
+		Token:        token,
+		RefreshToken: refreshToken,
 	}
 
 	respondWithJSON(w, 200, responseUser)
