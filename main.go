@@ -106,13 +106,24 @@ type chirp struct {
 
 func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Body   string    `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
+		Body string `json:"body"`
+	}
+
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		w.WriteHeader(401)
+		return
+	}
+
+	uuid, err := auth.ValidateJWT(token, cfg.secret)
+	if err != nil {
+		w.WriteHeader(401)
+		return
 	}
 
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil {
 		log.Printf("Error decoding parameters: %s", err)
 		w.WriteHeader(500)
@@ -126,7 +137,7 @@ func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) 
 
 	createChirpParams := database.CreateChirpParams{
 		Body:   cleanChirp(params.Body),
-		UserID: params.UserID,
+		UserID: uuid,
 	}
 
 	dbChirp, err := cfg.dbQueries.CreateChirp(r.Context(), createChirpParams)
