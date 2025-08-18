@@ -4,3 +4,8 @@ VALUES (
     $1, NOW(), NOW(), $2, NOW() + INTERVAL '60 days', NULL
 )
 RETURNING *;
+
+-- name: GetUserFromRefreshToken :one
+SELECT user_id
+FROM refresh_tokens
+WHERE token = $1;
