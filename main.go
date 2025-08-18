@@ -22,6 +22,7 @@ func main() {
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
 	platform := os.Getenv("PLATFORM")
+	secret := os.Getenv("SECRET")
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		log.Fatal(err)
@@ -30,6 +31,7 @@ func main() {
 	apiConfig := apiConfig{
 		dbQueries: dbQueries,
 		platform:  platform,
+		secret:    secret,
 	}
 
 	mux := http.NewServeMux()
@@ -57,6 +59,7 @@ type apiConfig struct {
 	fileServerHits atomic.Int32
 	dbQueries      *database.Queries
 	platform       string
+	secret         string
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -295,8 +298,17 @@ func (cfg *apiConfig) postUsersHandler(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Email            string `json:"email"`
+		Password         string `json:"password"`
+		ExpiresInSeconds int    `json:"expires_in_seconds"`
+	}
+
+	type loginUser struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email     string    `json:"email"`
+		Token     string    `json:"token"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -320,11 +332,24 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	responseUser := user{
+	expiresIn := min(params.ExpiresInSeconds, 3600)
+	if expiresIn == 0 {
+		expiresIn = 3600
+	}
+
+	token, err := auth.MakeJWT(dbUser.ID, cfg.secret, time.Second*time.Duration(expiresIn))
+	if err != nil {
+		log.Printf("Error creating JWT: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	responseUser := loginUser{
 		ID:        dbUser.ID,
 		CreatedAt: dbUser.CreatedAt,
 		UpdatedAt: dbUser.UpdatedAt,
 		Email:     dbUser.Email,
+		Token:     token,
 	}
 
 	respondWithJSON(w, 200, responseUser)
