@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/R0Xps/chirpy/internal/auth"
 	"github.com/R0Xps/chirpy/internal/database"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
@@ -40,7 +41,7 @@ func main() {
 	mux.HandleFunc("POST /api/chirps", apiConfig.postChirpsHandler)
 	mux.HandleFunc("GET /api/chirps", apiConfig.getChirpsHandler)
 	mux.HandleFunc("GET /api/chirps/{chirpID}", apiConfig.getChirpHandler)
-	mux.HandleFunc("POST /api/users", apiConfig.usersHandler)
+	mux.HandleFunc("POST /api/users", apiConfig.postUsersHandler)
 	server := http.Server{Handler: mux, Addr: ":8080"}
 	server.ListenAndServe()
 }
@@ -230,16 +231,17 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Write(data)
 }
 
-func (cfg *apiConfig) usersHandler(w http.ResponseWriter, r *http.Request) {
-	type parameters struct {
-		Email string `json:"email"`
-	}
+type user struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
+}
 
-	type User struct {
-		ID        uuid.UUID `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Email     string    `json:"email"`
+func (cfg *apiConfig) postUsersHandler(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -251,19 +253,41 @@ func (cfg *apiConfig) usersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dbUser, err := cfg.dbQueries.CreateUser(r.Context(), params.Email)
+	if params.Email == "" {
+		respondWithError(w, 400, "Email is required")
+		return
+	}
+
+	if params.Password == "" {
+		respondWithError(w, 400, "Password is required")
+		return
+	}
+
+	hashedPassword, err := auth.HashPassword(params.Password)
+	if err != nil {
+		log.Printf("Error hashing password: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	createUserParams := database.CreateUserParams{
+		Email:          params.Email,
+		HashedPassword: hashedPassword,
+	}
+
+	dbUser, err := cfg.dbQueries.CreateUser(r.Context(), createUserParams)
 	if err != nil {
 		log.Printf("Error creating user: %s", err)
 		w.WriteHeader(500)
 		return
 	}
 
-	user := User{
+	responseUser := user{
 		ID:        dbUser.ID,
 		CreatedAt: dbUser.CreatedAt,
 		UpdatedAt: dbUser.UpdatedAt,
 		Email:     dbUser.Email,
 	}
 
-	respondWithJSON(w, 201, user)
+	respondWithJSON(w, 201, responseUser)
 }
