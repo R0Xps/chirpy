@@ -45,6 +45,7 @@ func main() {
 	mux.HandleFunc("GET /api/chirps/{chirpID}", apiConfig.getChirpHandler)
 	mux.HandleFunc("POST /api/users", apiConfig.postUsersHandler)
 	mux.HandleFunc("POST /api/login", apiConfig.loginHandler)
+	mux.HandleFunc("POST /api/refresh", apiConfig.refreshHandler)
 	server := http.Server{Handler: mux, Addr: ":8080"}
 	server.ListenAndServe()
 }
@@ -374,4 +375,35 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, 200, responseUser)
+}
+
+func (cfg *apiConfig) refreshHandler(w http.ResponseWriter, r *http.Request) {
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		w.WriteHeader(401)
+		return
+	}
+
+	dbRefreshToken, err := cfg.dbQueries.GetRefreshToken(r.Context(), token)
+	if err != nil || dbRefreshToken.ExpiresAt.Before(time.Now()) || dbRefreshToken.RevokedAt.Valid {
+		w.WriteHeader(401)
+		return
+	}
+
+	type accessToken struct {
+		Token string `json:"token"`
+	}
+
+	newToken, err := auth.MakeJWT(dbRefreshToken.UserID, cfg.secret, time.Hour)
+	if err != nil {
+		log.Printf("Error making JWT: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	accessTokenResponse := accessToken{
+		Token: newToken,
+	}
+
+	respondWithJSON(w, 200, accessTokenResponse)
 }
