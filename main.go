@@ -42,6 +42,7 @@ func main() {
 	mux.HandleFunc("GET /api/chirps", apiConfig.getChirpsHandler)
 	mux.HandleFunc("GET /api/chirps/{chirpID}", apiConfig.getChirpHandler)
 	mux.HandleFunc("POST /api/users", apiConfig.postUsersHandler)
+	mux.HandleFunc("POST /api/login", apiConfig.loginHandler)
 	server := http.Server{Handler: mux, Addr: ":8080"}
 	server.ListenAndServe()
 }
@@ -290,4 +291,41 @@ func (cfg *apiConfig) postUsersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, 201, responseUser)
+}
+
+func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		log.Printf("Error decoding parameters: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	dbUser, err := cfg.dbQueries.GetUserByEmail(r.Context(), params.Email)
+	if err != nil {
+		respondWithError(w, 401, "incorrect email or password")
+		return
+	}
+
+	err = auth.CheckPasswordHash(params.Password, dbUser.HashedPassword)
+	if err != nil {
+		respondWithError(w, 401, "incorrect email or password")
+		return
+	}
+
+	responseUser := user{
+		ID:        dbUser.ID,
+		CreatedAt: dbUser.CreatedAt,
+		UpdatedAt: dbUser.UpdatedAt,
+		Email:     dbUser.Email,
+	}
+
+	respondWithJSON(w, 200, responseUser)
 }
