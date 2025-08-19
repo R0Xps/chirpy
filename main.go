@@ -167,8 +167,20 @@ func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
-	dbChirps, err := cfg.dbQueries.GetChirpsInOrder(r.Context())
-
+	authorId := r.URL.Query().Get("author_id")
+	var dbChirps []database.Chirp
+	var err error
+	if authorId != "" {
+		uuid, err := uuid.Parse(authorId)
+		if err != nil {
+			log.Printf("Error parsing author_id: %s", err)
+			w.WriteHeader(500)
+			return
+		}
+		dbChirps, err = cfg.dbQueries.GetChirpsByUserInOrder(r.Context(), uuid)
+	} else {
+		dbChirps, err = cfg.dbQueries.GetChirpsInOrder(r.Context())
+	}
 	if err != nil {
 		log.Printf("Error fetching chirps from database: %s", err)
 		w.WriteHeader(500)
