@@ -5,16 +5,14 @@ VALUES (
 )
 RETURNING *;
 
--- name: GetChirpsInOrder :many
+-- name: GetChirps :many
 SELECT id, created_at, updated_at, body, user_id
-FROM chirps
-ORDER BY created_at ASC;
+FROM chirps;
 
--- name: GetChirpsByUserInOrder :many
+-- name: GetChirpsByUser :many
 SELECT id, created_at, updated_at, body, user_id
 FROM chirps
-WHERE user_id = $1
-ORDER BY created_at ASC;
+WHERE user_id = $1;
 
 -- name: GetChirpById :one
 SELECT id, created_at, updated_at, body, user_id

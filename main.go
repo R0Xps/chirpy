@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -173,13 +174,12 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 	if authorId != "" {
 		uuid, err := uuid.Parse(authorId)
 		if err != nil {
-			log.Printf("Error parsing author_id: %s", err)
-			w.WriteHeader(500)
+			respondWithError(w, 400, "Invalid UUID")
 			return
 		}
-		dbChirps, err = cfg.dbQueries.GetChirpsByUserInOrder(r.Context(), uuid)
+		dbChirps, err = cfg.dbQueries.GetChirpsByUser(r.Context(), uuid)
 	} else {
-		dbChirps, err = cfg.dbQueries.GetChirpsInOrder(r.Context())
+		dbChirps, err = cfg.dbQueries.GetChirps(r.Context())
 	}
 	if err != nil {
 		log.Printf("Error fetching chirps from database: %s", err)
@@ -198,6 +198,10 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 			UserID:    dbChirp.UserID,
 		}
 	}
+
+	slices.SortFunc(chirps, func(a, b chirp) int {
+		return a.CreatedAt.Compare(b.CreatedAt)
+	})
 
 	respondWithJSON(w, 200, chirps)
 }
