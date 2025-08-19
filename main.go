@@ -199,9 +199,19 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	slices.SortFunc(chirps, func(a, b chirp) int {
-		return a.CreatedAt.Compare(b.CreatedAt)
-	})
+	order := r.URL.Query().Get("sort")
+	if order == "" || order == "asc" {
+		slices.SortFunc(chirps, func(a, b chirp) int {
+			return a.CreatedAt.Compare(b.CreatedAt)
+		})
+	} else if order == "desc" {
+		slices.SortFunc(chirps, func(a, b chirp) int {
+			return b.CreatedAt.Compare(a.CreatedAt)
+		})
+	} else {
+		respondWithError(w, 400, "Invalid sort parameter (must be 'asc' or 'desc')")
+		return
+	}
 
 	respondWithJSON(w, 200, chirps)
 }
