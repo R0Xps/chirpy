@@ -49,6 +49,7 @@ func main() {
 	mux.HandleFunc("POST /api/revoke", apiConfig.revokeHandler)
 	mux.HandleFunc("PUT /api/users", apiConfig.putUsersHandler)
 	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiConfig.deleteChirpsHandler)
+	mux.HandleFunc("POST /api/polka/webhooks", apiConfig.postPolkaWebhooksHandler)
 	server := http.Server{Handler: mux, Addr: ":8080"}
 	server.ListenAndServe()
 }
@@ -526,6 +527,49 @@ func (cfg *apiConfig) deleteChirpsHandler(w http.ResponseWriter, r *http.Request
 	err = cfg.dbQueries.DeleteChirpById(r.Context(), dbChirp.ID)
 	if err != nil {
 		log.Printf("Error deleting chirp: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	w.WriteHeader(204)
+}
+
+func (cfg *apiConfig) postPolkaWebhooksHandler(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Event string `json:"event"`
+		Data  struct {
+			UserID string `json:"user_id"`
+		} `json:"data"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		log.Printf("Error decoding parameters: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	if params.Event != "user.upgraded" {
+		w.WriteHeader(204)
+		return
+	}
+	userID, err := uuid.Parse(params.Data.UserID)
+	if err != nil {
+		respondWithError(w, 400, "Invalid UUID")
+		return
+	}
+
+	_, err = cfg.dbQueries.GetUserById(r.Context(), userID)
+	if err != nil {
+		w.WriteHeader(404)
+		return
+	}
+
+	err = cfg.dbQueries.UpgradeUserToChirpyRed(r.Context(), userID)
+	if err != nil {
+		log.Printf("Error upgrading user to chirpy red: %s", err)
 		w.WriteHeader(500)
 		return
 	}
