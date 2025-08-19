@@ -48,6 +48,7 @@ func main() {
 	mux.HandleFunc("POST /api/refresh", apiConfig.refreshHandler)
 	mux.HandleFunc("POST /api/revoke", apiConfig.revokeHandler)
 	mux.HandleFunc("PUT /api/users", apiConfig.putUsersHandler)
+	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiConfig.deleteChirpsHandler)
 	server := http.Server{Handler: mux, Addr: ":8080"}
 	server.ListenAndServe()
 }
@@ -484,5 +485,45 @@ func (cfg *apiConfig) revokeHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Error revoking token: %s", err)
 	}
+	w.WriteHeader(204)
+}
+
+func (cfg *apiConfig) deleteChirpsHandler(w http.ResponseWriter, r *http.Request) {
+	chirpID, err := uuid.Parse(r.PathValue("chirpID"))
+	if err != nil {
+		respondWithError(w, 400, "Invalid UUID")
+		return
+	}
+
+	dbChirp, err := cfg.dbQueries.GetChirpById(r.Context(), chirpID)
+	if err != nil {
+		w.WriteHeader(404)
+		return
+	}
+
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		w.WriteHeader(401)
+		return
+	}
+
+	uuid, err := auth.ValidateJWT(token, cfg.secret)
+	if err != nil {
+		w.WriteHeader(401)
+		return
+	}
+
+	if dbChirp.UserID != uuid {
+		w.WriteHeader(403)
+		return
+	}
+
+	err = cfg.dbQueries.DeleteChirpById(r.Context(), dbChirp.ID)
+	if err != nil {
+		log.Printf("Error deleting chirp: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
 	w.WriteHeader(204)
 }
