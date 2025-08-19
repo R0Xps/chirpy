@@ -47,6 +47,7 @@ func main() {
 	mux.HandleFunc("POST /api/login", apiConfig.loginHandler)
 	mux.HandleFunc("POST /api/refresh", apiConfig.refreshHandler)
 	mux.HandleFunc("POST /api/revoke", apiConfig.revokeHandler)
+	mux.HandleFunc("PUT /api/users", apiConfig.putUsersHandler)
 	server := http.Server{Handler: mux, Addr: ":8080"}
 	server.ListenAndServe()
 }
@@ -307,6 +308,63 @@ func (cfg *apiConfig) postUsersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, 201, responseUser)
+}
+
+func (cfg *apiConfig) putUsersHandler(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		w.WriteHeader(401)
+		return
+	}
+
+	uuid, err := auth.ValidateJWT(token, cfg.secret)
+	if err != nil {
+		w.WriteHeader(401)
+		return
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err = decoder.Decode(&params)
+	if err != nil {
+		log.Printf("Error decoding parameters: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	hashedPassword, err := auth.HashPassword(params.Password)
+	if err != nil {
+		log.Printf("Error hashing password: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	updateUserEmailAndPasswordParams := database.UpdateUserEmailAndPasswordParams{
+		ID:             uuid,
+		Email:          params.Email,
+		HashedPassword: hashedPassword,
+	}
+
+	dbUser, err := cfg.dbQueries.UpdateUserEmailAndPassword(r.Context(), updateUserEmailAndPasswordParams)
+	if err != nil {
+		log.Printf("Error updating user email and password: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	responseUser := user{
+		ID:        dbUser.ID,
+		CreatedAt: dbUser.CreatedAt,
+		UpdatedAt: dbUser.UpdatedAt,
+		Email:     dbUser.Email,
+	}
+
+	respondWithJSON(w, 200, responseUser)
 }
 
 func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
