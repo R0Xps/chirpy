@@ -109,7 +109,7 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 // Always responds with a 200 status code
 func healthzHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(200)
+	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "OK")
 }
 
@@ -117,7 +117,7 @@ func healthzHandler(w http.ResponseWriter, r *http.Request) {
 // Responds with 200 and a simple HTML page that shows how many times the file server has been accessed since the last restart/reset
 func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "text/html")
-	w.WriteHeader(200)
+	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, `<html>
   <body>
     <h1>Welcome, Chirpy Admin</h1>
@@ -131,17 +131,17 @@ func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
 // Resets the file server hits counter, and clears the users table in the database, responds with 200 on success
 func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
 	if cfg.platform != "dev" {
-		w.WriteHeader(403)
+		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 	err := cfg.dbQueries.ResetUsers(r.Context())
 	if err != nil {
 		log.Printf("(POST /admin/reset) Error resetting users table: %s", err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	cfg.fileServerHits.Store(0)
-	w.WriteHeader(200)
+	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "OK")
 }
 
@@ -157,7 +157,7 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 	if authorId != "" {
 		uuid, err := uuid.Parse(authorId)
 		if err != nil {
-			respondWithError(w, 400, "Invalid UUID")
+			respondWithError(w, http.StatusBadRequest, "Invalid UUID")
 			return
 		}
 		dbChirps, err = cfg.dbQueries.GetChirpsByUser(r.Context(), uuid)
@@ -166,7 +166,7 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Printf("(GET /api/chirps) Error fetching chirps from database: %s", err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -192,11 +192,11 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 			return b.CreatedAt.Compare(a.CreatedAt)
 		})
 	} else {
-		respondWithError(w, 400, "Invalid sort parameter (must be 'asc' or 'desc')")
+		respondWithError(w, http.StatusBadRequest, "Invalid sort parameter (must be 'asc' or 'desc')")
 		return
 	}
 
-	respondWithJSON(w, 200, chirps)
+	respondWithJSON(w, http.StatusOK, chirps)
 }
 
 // Handler function for GET /api/chirps/{chirpID} endpoint
@@ -204,14 +204,14 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 func (cfg *apiConfig) getChirpHandler(w http.ResponseWriter, r *http.Request) {
 	chirpID, err := uuid.Parse(r.PathValue("chirpID"))
 	if err != nil {
-		respondWithError(w, 400, "Invalid UUID")
+		respondWithError(w, http.StatusBadRequest, "Invalid UUID")
 		return
 	}
 
 	dbChirp, err := cfg.dbQueries.GetChirpById(r.Context(), chirpID)
 
 	if err != nil {
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
@@ -223,7 +223,7 @@ func (cfg *apiConfig) getChirpHandler(w http.ResponseWriter, r *http.Request) {
 		UserID:    dbChirp.UserID,
 	}
 
-	respondWithJSON(w, 200, responseChirp)
+	respondWithJSON(w, http.StatusOK, responseChirp)
 }
 
 // Handler function for the POST /api/chirps endpoint
@@ -241,13 +241,13 @@ func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) 
 
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		w.WriteHeader(401)
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
 	uuid, err := auth.ValidateJWT(token, cfg.secret)
 	if err != nil {
-		w.WriteHeader(401)
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
@@ -256,12 +256,12 @@ func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) 
 	err = decoder.Decode(&params)
 	if err != nil {
 		log.Printf("(POST /api/chirps) Error decoding parameters: %s", err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	if len(params.Body) > 140 {
-		respondWithError(w, 400, "Chirp is too long")
+		respondWithError(w, http.StatusBadRequest, "Chirp is too long")
 		return
 	}
 
@@ -274,7 +274,7 @@ func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) 
 
 	if err != nil {
 		log.Printf("(POST /api/chirps) Error creating chirp: %s", err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -286,7 +286,7 @@ func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) 
 		UserID:    dbChirp.UserID,
 	}
 
-	respondWithJSON(w, 201, responseChirp)
+	respondWithJSON(w, http.StatusCreated, responseChirp)
 }
 
 // This function is used to trim and extra spaces in the beginning or end of a string, and replace any words in the badWords map with '****'
@@ -308,41 +308,41 @@ func cleanChirp(s string) string {
 func (cfg *apiConfig) deleteChirpsHandler(w http.ResponseWriter, r *http.Request) {
 	chirpID, err := uuid.Parse(r.PathValue("chirpID"))
 	if err != nil {
-		respondWithError(w, 400, "Invalid UUID")
+		respondWithError(w, http.StatusBadRequest, "Invalid UUID")
 		return
 	}
 
 	dbChirp, err := cfg.dbQueries.GetChirpById(r.Context(), chirpID)
 	if err != nil {
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		w.WriteHeader(401)
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
 	uuid, err := auth.ValidateJWT(token, cfg.secret)
 	if err != nil {
-		w.WriteHeader(401)
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
 	if dbChirp.UserID != uuid {
-		w.WriteHeader(403)
+		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 
 	err = cfg.dbQueries.DeleteChirpById(r.Context(), dbChirp.ID)
 	if err != nil {
 		log.Printf("(DELETE /api/chirps/{chirpID}) Error deleting chirp: %s", err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(204)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Handler function for the POST /api/users endpoint
@@ -361,24 +361,24 @@ func (cfg *apiConfig) postUsersHandler(w http.ResponseWriter, r *http.Request) {
 	err := decoder.Decode(&params)
 	if err != nil {
 		log.Printf("(POST /api/users) Error decoding parameters: %s", err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	if params.Email == "" {
-		respondWithError(w, 400, "Email is required")
+		respondWithError(w, http.StatusBadRequest, "Email is required")
 		return
 	}
 
 	if params.Password == "" {
-		respondWithError(w, 400, "Password is required")
+		respondWithError(w, http.StatusBadRequest, "Password is required")
 		return
 	}
 
 	hashedPassword, err := auth.HashPassword(params.Password)
 	if err != nil {
 		log.Printf("(POST /api/users) Error hashing password: %s", err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -390,7 +390,7 @@ func (cfg *apiConfig) postUsersHandler(w http.ResponseWriter, r *http.Request) {
 	dbUser, err := cfg.dbQueries.CreateUser(r.Context(), createUserParams)
 	if err != nil {
 		log.Printf("Error creating user: %s", err)
-		respondWithError(w, 422, "Email is already used by another user")
+		respondWithError(w, http.StatusUnprocessableEntity, "Email is already used by another user")
 		return
 	}
 
@@ -402,7 +402,7 @@ func (cfg *apiConfig) postUsersHandler(w http.ResponseWriter, r *http.Request) {
 		IsChirpyRed: dbUser.IsChirpyRed,
 	}
 
-	respondWithJSON(w, 201, responseUser)
+	respondWithJSON(w, http.StatusCreated, responseUser)
 }
 
 // Handler function for the PUT /api/users endpoint
@@ -420,13 +420,13 @@ func (cfg *apiConfig) putUsersHandler(w http.ResponseWriter, r *http.Request) {
 
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		w.WriteHeader(401)
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
 	uuid, err := auth.ValidateJWT(token, cfg.secret)
 	if err != nil {
-		w.WriteHeader(401)
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
@@ -435,14 +435,14 @@ func (cfg *apiConfig) putUsersHandler(w http.ResponseWriter, r *http.Request) {
 	err = decoder.Decode(&params)
 	if err != nil {
 		log.Printf("(PUT /api/users) Error decoding parameters: %s", err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	hashedPassword, err := auth.HashPassword(params.Password)
 	if err != nil {
 		log.Printf("(PUT /api/users) Error hashing password: %s", err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -455,7 +455,7 @@ func (cfg *apiConfig) putUsersHandler(w http.ResponseWriter, r *http.Request) {
 	dbUser, err := cfg.dbQueries.UpdateUserEmailAndPassword(r.Context(), updateUserEmailAndPasswordParams)
 	if err != nil {
 		log.Printf("(PUT /api/users) Error updating user email and password: %s", err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -467,7 +467,7 @@ func (cfg *apiConfig) putUsersHandler(w http.ResponseWriter, r *http.Request) {
 		IsChirpyRed: dbUser.IsChirpyRed,
 	}
 
-	respondWithJSON(w, 200, responseUser)
+	respondWithJSON(w, http.StatusOK, responseUser)
 }
 
 // Handler function for the POST /api/login endpoint
@@ -498,26 +498,26 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	err := decoder.Decode(&params)
 	if err != nil {
 		log.Printf("(POST /api/login) Error decoding parameters: %s", err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	dbUser, err := cfg.dbQueries.GetUserByEmail(r.Context(), params.Email)
 	if err != nil {
-		respondWithError(w, 401, "incorrect email or password")
+		respondWithError(w, http.StatusUnauthorized, "incorrect email or password")
 		return
 	}
 
 	err = auth.CheckPasswordHash(params.Password, dbUser.HashedPassword)
 	if err != nil {
-		respondWithError(w, 401, "incorrect email or password")
+		respondWithError(w, http.StatusUnauthorized, "incorrect email or password")
 		return
 	}
 
 	token, err := auth.MakeJWT(dbUser.ID, cfg.secret, time.Hour)
 	if err != nil {
 		log.Printf("(POST /api/login) Error creating JWT: %s", err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -531,7 +531,7 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	_, err = cfg.dbQueries.CreateRefreshToken(r.Context(), createRefreshTokenParams)
 	if err != nil {
 		log.Printf("(POST /api/login) Error adding refresh token to database: %s", err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -545,7 +545,7 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 		IsChirpyRed:  dbUser.IsChirpyRed,
 	}
 
-	respondWithJSON(w, 200, responseUser)
+	respondWithJSON(w, http.StatusOK, responseUser)
 }
 
 // Handler function for the POST /api/refresh endpoint
@@ -557,13 +557,13 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 func (cfg *apiConfig) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		w.WriteHeader(401)
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
 	dbRefreshToken, err := cfg.dbQueries.GetRefreshToken(r.Context(), token)
 	if err != nil || dbRefreshToken.ExpiresAt.Before(time.Now()) || dbRefreshToken.RevokedAt.Valid {
-		w.WriteHeader(401)
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
@@ -574,7 +574,7 @@ func (cfg *apiConfig) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	newToken, err := auth.MakeJWT(dbRefreshToken.UserID, cfg.secret, time.Hour)
 	if err != nil {
 		log.Printf("(POST /api/refresh) Error making JWT: %s", err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -582,7 +582,7 @@ func (cfg *apiConfig) refreshHandler(w http.ResponseWriter, r *http.Request) {
 		Token: newToken,
 	}
 
-	respondWithJSON(w, 200, accessTokenResponse)
+	respondWithJSON(w, http.StatusOK, accessTokenResponse)
 }
 
 // Handler function for the POST /api/revoke endpoint
@@ -593,13 +593,13 @@ func (cfg *apiConfig) refreshHandler(w http.ResponseWriter, r *http.Request) {
 func (cfg *apiConfig) revokeHandler(w http.ResponseWriter, r *http.Request) {
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		w.WriteHeader(401)
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
 	dbRefreshToken, err := cfg.dbQueries.GetRefreshToken(r.Context(), token)
 	if err != nil || dbRefreshToken.ExpiresAt.Before(time.Now()) || dbRefreshToken.RevokedAt.Valid {
-		w.WriteHeader(401)
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
@@ -607,7 +607,7 @@ func (cfg *apiConfig) revokeHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Error revoking token: %s", err)
 	}
-	w.WriteHeader(204)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Handler function for the POST /api/polka/webhooks endpoint
@@ -628,7 +628,7 @@ func (cfg *apiConfig) postPolkaWebhooksHandler(w http.ResponseWriter, r *http.Re
 
 	key, err := auth.GetApiKey(r.Header)
 	if err != nil || key != cfg.polkaKey {
-		w.WriteHeader(401)
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
@@ -637,34 +637,34 @@ func (cfg *apiConfig) postPolkaWebhooksHandler(w http.ResponseWriter, r *http.Re
 	err = decoder.Decode(&params)
 	if err != nil {
 		log.Printf("(POST /api/polka/webhooks) Error decoding parameters: %s", err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	if params.Event != "user.upgraded" {
-		w.WriteHeader(204)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	userID, err := uuid.Parse(params.Data.UserID)
 	if err != nil {
-		respondWithError(w, 400, "Invalid UUID")
+		respondWithError(w, http.StatusBadRequest, "Invalid UUID")
 		return
 	}
 
 	_, err = cfg.dbQueries.GetUserById(r.Context(), userID)
 	if err != nil {
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
 	err = cfg.dbQueries.UpgradeUserToChirpyRed(r.Context(), userID)
 	if err != nil {
 		log.Printf("(POST /api/polka/webhooks) Error upgrading user to chirpy red: %s", err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(204)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Writes a response to the given http.ResponseWriter with the given code, and a body of '{"error": "{errorMsg}"}' where {errorMsg} is the msg argument
@@ -684,7 +684,7 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 
 	if err != nil {
 		log.Printf("(respondWithJSON()) Error marshalling JSON: %s", err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
