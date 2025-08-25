@@ -18,9 +18,21 @@ func main() {
 	godotenv.Load()
 	// Get the values of environment variables for api config
 	dbURL := os.Getenv("DB_URL")
+	if dbURL == "" {
+		log.Fatal("DB_URL environment variable not set")
+	}
 	platform := os.Getenv("PLATFORM")
+	if platform == "" {
+		log.Fatal("PLATFORM environment variable not set")
+	}
 	secret := os.Getenv("SECRET")
+	if secret == "" {
+		log.Fatal("SECRET environment variable not set")
+	}
 	polkaKey := os.Getenv("POLKA_KEY")
+	if polkaKey == "" {
+		log.Fatal("POLKA_KEY environment variable not set")
+	}
 	// Connect to the database
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
